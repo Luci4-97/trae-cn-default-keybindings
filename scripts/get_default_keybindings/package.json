@@ -1,0 +1,16 @@
+{
+  "name": "get-trae-keybindings",
+  "version": "1.0.0",
+  "description": "Extract default keybindings from Trae CN IDE",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "test": "node main.js"
+  },
+  "dependencies": {
+    "@vscode/test-electron": "^2.4.0",
+    "fs-extra": "^11.0.0",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {}
+}

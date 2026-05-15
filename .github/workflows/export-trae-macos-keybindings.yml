@@ -1,0 +1,84 @@
+name: Export Trae CN macOS Keybindings
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/**'
+      - 'scripts/**'
+
+jobs:
+  export-macos-keybindings:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      - name: Download Trae CN for macOS
+        run: |
+          curl -L "https://lf-cdn.trae.com.cn/obj/trae-com-cn/pkg/app/releases/stable/2.3.25937/darwin/Trae%20CN-darwin-x64.dmg" -o trae.dmg
+
+      - name: Mount DMG and install Trae CN
+        run: |
+          hdiutil attach trae.dmg -quiet -mountpoint /Volumes/TraeCN
+          cp -R "/Volumes/TraeCN/Trae CN.app" /Applications/
+          hdiutil detach /Volumes/TraeCN -quiet
+
+      - name: Verify Trae CN installation
+        run: |
+          if [ -d "/Applications/Trae CN.app" ]; then
+            echo "Trae CN installed successfully"
+          else
+            echo "Trae CN installation failed"
+            exit 1
+          fi
+
+      - name: Install dependencies for keybinding extractor
+        run: |
+          cd scripts/get_default_keybindings
+          npm install
+
+      - name: Extract default keybindings
+        run: |
+          cd scripts/get_default_keybindings
+          npm start
+
+      - name: Process JSON files
+        run: |
+          cd scripts
+          python3 process_json.py
+
+      - name: Upload keybindings as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trae-macos-keybindings
+          path: |
+            macos.keybindings.json
+            macos.negative.keybindings.json
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if git diff --name-only; then
+            echo "has_changes=true" >> $GITHUB_ENV
+          else
+            echo "has_changes=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create PR if changes detected
+        if: ${{ env.has_changes == 'true' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Update Trae CN macOS Keybindings"
+          body: "This PR updates the Trae CN macOS default keybindings. Generated automatically by GitHub Actions."
+          branch: "update-macos-keybindings"
+          delete-branch: true
