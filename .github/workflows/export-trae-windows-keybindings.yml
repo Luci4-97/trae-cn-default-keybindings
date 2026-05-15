@@ -1,4 +1,4 @@
-name: Export Trae CN Windows Keybindings
+name: Export Trae Windows Keybindings
 
 on:
   schedule:
@@ -23,23 +23,159 @@ jobs:
         with:
           node-version: 20.x
 
-      - name: Download Trae CN for Windows
+      - name: Fetch latest Trae version and download URL from API
+        id: get-version
         run: |
-          Invoke-WebRequest -Uri "https://lf-cdn.trae.com.cn/obj/trae-com-cn/pkg/app/releases/stable/2.3.24299/win32/Trae%20CN-Setup-x64.exe" -OutFile "trae-setup.exe"
+          Write-Host "Fetching latest version from Trae API..."
+          $ProgressPreference = 'SilentlyContinue'
+          $apiUrl = "https://api.trae.ai/icube/api/v1/native/version/trae/latest"
+          $jsonContent = $null
+          
+          Write-Host "Attempt 1: Using Invoke-WebRequest..."
+          try {
+            $response = Invoke-WebRequest -Uri $apiUrl -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" -TimeoutSec 30 -UseBasicParsing
+            $jsonContent = $response.Content
+            Write-Host "Successfully fetched using Invoke-WebRequest"
+          } catch {
+            Write-Host "Invoke-WebRequest failed: $($_.Exception.Message)"
+            Write-Host "Attempt 2: Using curl (fallback)..."
+            
+            try {
+              $jsonContent = curl -s -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" $apiUrl --max-time 30
+              Write-Host "Successfully fetched using curl"
+            } catch {
+              Write-Error "Both Invoke-WebRequest and curl failed"
+              Write-Error "Last error: $_"
+              exit 1
+            }
+          }
+          
+          if ([string]::IsNullOrEmpty($jsonContent)) {
+            Write-Error "API returned empty response"
+            exit 1
+          }
+          
+          Write-Host "Response length: $($jsonContent.Length) characters"
+          $displayContent = if ($jsonContent.Length -gt 1000) { $jsonContent.Substring(0, 1000) + "..." } else { $jsonContent }
+          Write-Host "Response preview: $displayContent"
+          
+          try {
+            Write-Host "Parsing JSON..."
+            $json = $jsonContent | ConvertFrom-Json
+            
+            if ($null -eq $json) {
+              Write-Error "Failed to parse JSON"
+              exit 1
+            }
+            
+            if (-not $json.PSObject.Properties['data']) {
+              Write-Error "JSON missing 'data' property"
+              exit 1
+            }
+            
+            if (-not $json.data.PSObject.Properties['manifest']) {
+              Write-Error "JSON missing 'data.manifest' property"
+              exit 1
+            }
+            
+            if (-not $json.data.manifest.PSObject.Properties['win32']) {
+              Write-Error "JSON missing 'data.manifest.win32' property"
+              exit 1
+            }
+            
+            $version = $json.data.manifest.win32.version
+            Write-Host "Extracted version: $version"
+            
+            $downloadUrl = $null
+            foreach ($item in $json.data.manifest.win32.download) {
+              if ($item.region -eq "sg") {
+                $downloadUrl = $item.x64
+                break
+              }
+            }
+            
+            if (-not $downloadUrl) {
+              Write-Error "Could not find download URL for region 'sg'"
+              exit 1
+            }
+            
+            Write-Host "Found download URL: $downloadUrl"
+            
+            # Set environment variables using GitHub Actions environment file
+            # This is the recommended way since set-env command is deprecated
+            "TRAE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            "DOWNLOAD_URL=$downloadUrl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            
+            Write-Host "Successfully fetched version: $version"
+          } catch {
+            Write-Error "JSON processing failed: $($_.Exception.Message)"
+            exit 1
+          }
         shell: powershell
 
-      - name: Install Trae CN silently
-        run: |
-          Start-Process -FilePath "trae-setup.exe" -ArgumentList "/S" -Wait -NoNewWindow
-        shell: powershell
+      - name: Download Trae for Windows (with retry)
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          retry_wait_seconds: 10
+          timeout_seconds: 120
+          shell: powershell
+          command: |
+            Write-Host "Downloading Trae version ${env:TRAE_VERSION}..."
+            $ProgressPreference = 'SilentlyContinue'
+            $url = $env:DOWNLOAD_URL
+            $output = "trae-setup.exe"
+            
+            Write-Host "Download URL: $url"
+            
+            try {
+              Invoke-WebRequest -Uri $url -OutFile $output -UserAgent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              Write-Host "Download completed successfully with Invoke-WebRequest"
+            } catch {
+              Write-Host "Invoke-WebRequest failed, trying curl..."
+              curl -L -o $output -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" $url
+              Write-Host "Download completed successfully with curl"
+            }
 
-      - name: Verify Trae CN installation
+      - name: Verify download
         run: |
-          $traePath = "$env:USERPROFILE\AppData\Local\Programs\Trae CN\traecli.exe"
-          if (Test-Path $traePath) {
-            Write-Host "Trae CN installed successfully at $traePath"
+          if (Test-Path "trae-setup.exe") {
+            $fileSize = (Get-Item "trae-setup.exe").Length
+            Write-Host "Downloaded file size: $fileSize bytes"
+            if ($fileSize -lt 10000000) {
+              Write-Error "Downloaded file is too small (less than 10MB), likely corrupted"
+              exit 1
+            }
           } else {
-            Write-Error "Trae CN installation failed"
+            Write-Error "Download failed: trae-setup.exe not found"
+            exit 1
+          }
+        shell: powershell
+
+      - name: Install Trae silently
+        run: |
+          Write-Host "Starting silent installation..."
+          Start-Process -FilePath "trae-setup.exe" -ArgumentList "/S" -Wait -NoNewWindow
+          Write-Host "Installation completed"
+        shell: powershell
+
+      - name: Wait for installation to complete
+        run: Start-Sleep -Seconds 30
+        shell: powershell
+
+      - name: Verify Trae installation
+        run: |
+          # Check both possible installation paths
+          $traePath1 = "$env:USERPROFILE\AppData\Local\Programs\Trae\traecli.exe"
+          $traePath2 = "$env:USERPROFILE\AppData\Local\Programs\Trae CN\traecli.exe"
+          
+          if (Test-Path $traePath1) {
+            Write-Host "Trae installed successfully at $traePath1"
+          } elseif (Test-Path $traePath2) {
+            Write-Host "Trae installed successfully at $traePath2"
+          } else {
+            Write-Error "Trae installation failed"
+            Get-ChildItem -Path "$env:USERPROFILE\AppData\Local\Programs" -Recurse -Name | Select-Object -First 30
             exit 1
           }
         shell: powershell
@@ -48,6 +184,7 @@ jobs:
         run: |
           cd scripts/get_default_keybindings
           npm install
+        shell: powershell
 
       - name: Extract default keybindings
         run: |
@@ -59,6 +196,7 @@ jobs:
         run: |
           cd scripts
           python process_json.py
+        shell: powershell
 
       - name: Upload keybindings as artifact
         uses: actions/upload-artifact@v4
@@ -82,7 +220,7 @@ jobs:
         if: env.has_changes == 'true'
         uses: peter-evans/create-pull-request@v6
         with:
-          title: "Update Trae CN Windows Keybindings"
-          body: "This PR updates the Trae CN Windows default keybindings. Generated automatically by GitHub Actions."
+          title: "Update Trae Windows Keybindings (v${{ env.TRAE_VERSION }})"
+          body: "This PR updates the Trae Windows default keybindings to version ${env:TRAE_VERSION}. Generated automatically by GitHub Actions."
           branch: "update-windows-keybindings"
           delete-branch: true

@@ -13,41 +13,92 @@ async function main() {
     let traeExecutablePath;
     const platform = process.platform;
 
+    // Possible app names (in order of priority)
+    const appNames = ['Trae', 'Trae CN'];
+
     if (platform === 'win32') {
-      traeExecutablePath = path.join(
-        process.env.USERPROFILE || process.env.HOMEPATH,
-        'AppData',
-        'Local',
-        'Programs',
-        'Trae CN',
-        'traecli.exe'
-      );
+      // Windows: Check both possible install paths
+      const programFilesPath = process.env.USERPROFILE || process.env.HOMEPATH;
+      for (const appName of appNames) {
+        const candidatePath = path.join(
+          programFilesPath,
+          'AppData',
+          'Local',
+          'Programs',
+          appName,
+          'traecli.exe'
+        );
+        if (await fs.pathExists(candidatePath)) {
+          traeExecutablePath = candidatePath;
+          break;
+        }
+      }
     } else if (platform === 'darwin') {
-      traeExecutablePath = '/Applications/Trae CN.app/Contents/MacOS/Trae CN';
+      // macOS: Check both possible app names
+      for (const appName of appNames) {
+        const candidatePath = `/Applications/${appName}.app/Contents/MacOS/${appName.split(' ')[0]}`;
+        if (await fs.pathExists(candidatePath)) {
+          traeExecutablePath = candidatePath;
+          break;
+        }
+      }
     } else {
-      traeExecutablePath = '/usr/bin/traecli';
-    }
-
-    console.log(`Detected platform: ${platform}`);
-    console.log(`Looking for Trae CN at: ${traeExecutablePath}`);
-
-    if (!await fs.pathExists(traeExecutablePath)) {
-      console.log(`Trae CN not found at default location. Trying 'traecli' command...`);
-      const { spawnSync } = require('child_process');
-      const result = spawnSync('which', ['traecli']);
-      if (result.stdout && result.stdout.toString().trim()) {
-        traeExecutablePath = result.stdout.toString().trim();
-        console.log(`Found traecli at: ${traeExecutablePath}`);
-      } else {
-        console.error('ERROR: Trae CN executable not found!');
-        console.error('Please install Trae CN first.');
-        process.exit(1);
+      // Linux
+      for (const appName of appNames) {
+        const candidatePath = `/usr/bin/${appName.toLowerCase().replace(' ', '')}`;
+        if (await fs.pathExists(candidatePath)) {
+          traeExecutablePath = candidatePath;
+          break;
+        }
       }
     }
 
+    console.log(`Detected platform: ${platform}`);
+
+    // If not found in default paths, try 'traecli' command
+    if (!traeExecutablePath) {
+      console.log('Trae not found at default locations. Trying system commands...');
+      const { spawnSync } = require('child_process');
+      
+      // Try 'traecli'
+      const traecliResult = spawnSync('which', ['traecli']);
+      if (traecliResult.stdout && traecliResult.stdout.toString().trim()) {
+        traeExecutablePath = traecliResult.stdout.toString().trim();
+        console.log(`Found traecli at: ${traeExecutablePath}`);
+      } else {
+        // Try 'trae'
+        const traeResult = spawnSync('which', ['trae']);
+        if (traeResult.stdout && traeResult.stdout.toString().trim()) {
+          traeExecutablePath = traeResult.stdout.toString().trim();
+          console.log(`Found trae at: ${traeExecutablePath}`);
+        }
+      }
+    }
+
+    // If still not found, show error with suggestions
+    if (!traeExecutablePath) {
+      console.error('ERROR: Trae executable not found!');
+      console.error('');
+      console.error('Possible locations checked:');
+      if (platform === 'darwin') {
+        console.error('  - /Applications/Trae.app/Contents/MacOS/Trae');
+        console.error('  - /Applications/Trae CN.app/Contents/MacOS/Trae');
+        console.error('  - traecli (in PATH)');
+        console.error('  - trae (in PATH)');
+      } else if (platform === 'win32') {
+        console.error('  - %USERPROFILE%/AppData/Local/Programs/Trae/traecli.exe');
+        console.error('  - %USERPROFILE%/AppData/Local/Programs/Trae CN/traecli.exe');
+      }
+      console.error('');
+      console.error('Please install Trae first and ensure it is in your PATH.');
+      process.exit(1);
+    }
+
+    console.log(`Using Trae executable: ${traeExecutablePath}`);
+
     const extensionTestsPath = path.resolve(__dirname, 'main_impl.js');
 
-    console.log('Starting Trae CN to extract keybindings...');
+    console.log('Starting Trae to extract keybindings...');
     await runTests({
       vscodeExecutablePath: traeExecutablePath,
       extensionDevelopmentPath: __dirname,
