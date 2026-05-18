@@ -52,9 +52,16 @@ jobs:
             exit 1
           fi
           
-          # Extract version and download URL using jq
+          # Extract version and download URL using jq (match runner CPU arch)
           VERSION=$(echo "$RESPONSE" | jq -r '.data.manifest.darwin.version')
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r '.data.manifest.darwin.download[] | select(.region == "sg") | .intel')
+          ARCH=$(uname -m)
+          if [ "$ARCH" = "arm64" ]; then
+            ARCH_KEY="apple"
+          else
+            ARCH_KEY="intel"
+          fi
+          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r --arg arch "$ARCH_KEY" '.data.manifest.darwin.download[] | select(.region == "sg") | .[$arch]')
+          echo "Runner architecture: $ARCH ($ARCH_KEY)"
           
           if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
             echo "Error: Failed to extract version from API response"
@@ -117,14 +124,15 @@ jobs:
 
       - name: Verify Trae installation
         run: |
-          if [ -d "/Applications/Trae.app" ]; then
-            echo "Trae installed successfully"
-          else
-            echo "Trae installation failed"
-            ls -la /Volumes/ 2>/dev/null || true
+          TRAE_EXECUTABLE="/Applications/Trae.app/Contents/MacOS/Electron"
+          if [ ! -f "$TRAE_EXECUTABLE" ]; then
+            echo "Trae installation failed: executable not found at $TRAE_EXECUTABLE"
+            ls -la /Applications/Trae.app/Contents/MacOS/ 2>/dev/null || true
             ls -la /Applications/ | grep -i trae || true
             exit 1
           fi
+          echo "Trae installed successfully at $TRAE_EXECUTABLE"
+          echo "TRAE_EXECUTABLE_PATH=$TRAE_EXECUTABLE" >> $GITHUB_ENV
 
       - name: Install dependencies for keybinding extractor
         run: |

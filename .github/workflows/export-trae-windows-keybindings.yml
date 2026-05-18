@@ -171,8 +171,10 @@ jobs:
           
           if (Test-Path $traePath1) {
             Write-Host "Trae installed successfully at $traePath1"
+            "TRAE_EXECUTABLE_PATH=$traePath1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } elseif (Test-Path $traePath2) {
             Write-Host "Trae installed successfully at $traePath2"
+            "TRAE_EXECUTABLE_PATH=$traePath2" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } else {
             Write-Error "Trae installation failed"
             Get-ChildItem -Path "$env:USERPROFILE\AppData\Local\Programs" -Recurse -Name | Select-Object -First 30
