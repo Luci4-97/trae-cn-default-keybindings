@@ -139,11 +139,18 @@ jobs:
           cd scripts/get_default_keybindings
           npm install
 
-      - name: Extract default keybindings
+      - name: Bootstrap Trae first-run setup
         env:
           HOME: /tmp/trae-ci-home
         run: |
           rm -rf /tmp/trae-kb /tmp/trae-ci-home
+          cd scripts/get_default_keybindings
+          node ./bootstrap_setup_macos.js
+
+      - name: Extract default keybindings
+        env:
+          HOME: /tmp/trae-ci-home
+        run: |
           cd scripts/get_default_keybindings
           npm start
 

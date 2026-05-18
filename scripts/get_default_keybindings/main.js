@@ -29,7 +29,6 @@ async function main() {
         '--user-data-dir',
         dirs.userDataDir,
         '--disable-extensions',
-        '--skip-sessions-welcome',
       ],
     });
 

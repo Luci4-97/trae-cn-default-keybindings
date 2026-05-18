@@ -2,6 +2,7 @@
 
 const fs = require('fs/promises');
 const path = require('path');
+const { seedAllStateDatabases } = require('./seed_state_vscdb');
 
 /** Short paths avoid macOS Unix socket path limits (~103 chars) on GitHub Actions. */
 function getCiHome() {
@@ -60,6 +61,19 @@ async function seedTraeHome(ciHome) {
   await writeStorageJson(path.join(ciHome, '.trae', 'User', 'globalStorage'));
 }
 
+function profileReadyMarker(userDataDir) {
+  return path.join(userDataDir, '.ci-profile-ready');
+}
+
+async function pathExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function prepareLaunchProfile() {
   const dirs = getLaunchDirs();
 
@@ -73,13 +87,24 @@ async function prepareLaunchProfile() {
   await fs.mkdir(dirs.userDataDir, { recursive: true });
   await fs.mkdir(dirs.workspaceDir, { recursive: true });
 
+  if (await pathExists(profileReadyMarker(dirs.userDataDir))) {
+    console.log('Reusing existing CI profile (post-bootstrap).');
+    return dirs;
+  }
+
   await seedUserData(dirs.userDataDir);
   await seedTraeHome(dirs.ciHome);
+  await seedAllStateDatabases(dirs.userDataDir, dirs.ciHome);
 
   return dirs;
+}
+
+async function markProfileReady(userDataDir) {
+  await fs.writeFile(profileReadyMarker(userDataDir), `${new Date().toISOString()}\n`);
 }
 
 module.exports = {
   prepareLaunchProfile,
   getLaunchDirs,
+  markProfileReady,
 };
