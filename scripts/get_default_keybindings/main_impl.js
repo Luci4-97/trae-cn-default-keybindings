@@ -23,7 +23,7 @@ async function openDefaultKeybindingsFile() {
       setTimeout(() => {
         listener.dispose();
         reject(new Error('Timeout waiting for keybindings file'));
-      }, 10 * 1000);
+      }, 120 * 1000);
     }).catch(reject);
   });
 }
@@ -46,7 +46,7 @@ function makeOutputFilePath(platform) {
 }
 
 async function run() {
-  await sleep(2000);
+  await sleep(5000);
   const document = await openDefaultKeybindingsFile();
   const json = document.getText();
   const platform = os.platform();

@@ -190,6 +190,10 @@ jobs:
 
       - name: Extract default keybindings
         run: |
+          $profileRoot = Join-Path $env:RUNNER_TEMP "trae-kb"
+          $ciHome = Join-Path $env:RUNNER_TEMP "trae-ci-home"
+          if (Test-Path $profileRoot) { Remove-Item -Recurse -Force $profileRoot }
+          if (Test-Path $ciHome) { Remove-Item -Recurse -Force $ciHome }
           cd scripts/get_default_keybindings
           npm start
         shell: powershell

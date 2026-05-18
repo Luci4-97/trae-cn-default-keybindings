@@ -140,7 +140,10 @@ jobs:
           npm install
 
       - name: Extract default keybindings
+        env:
+          HOME: /tmp/trae-ci-home
         run: |
+          rm -rf /tmp/trae-kb /tmp/trae-ci-home
           cd scripts/get_default_keybindings
           npm start
 
